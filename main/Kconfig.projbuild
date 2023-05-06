@@ -1,0 +1,26 @@
+menu "ESP-Leak-Detector"
+    config HYDRO_SENSOR_GPIO
+        string "Hydro Sensor GPIO"
+        default 35
+        range 0 36
+        help
+            GPIO pin for hydro sensor.
+
+    config TIMEZONE
+        string "Timezone"
+        default "MST7MDT,M3.2.0/2,M11.1.0"
+        help
+            Timezone for clock.
+    
+    config WIFI_SSID
+        string "WiFi SSID"
+        default "myssid"
+        help
+            SSID (network name).
+
+    config WIFI_PASSWORD
+        string "WiFi Password"
+        default "mypassword"
+        help
+            WiFi password.
+endmenu
