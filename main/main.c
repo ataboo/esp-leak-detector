@@ -26,6 +26,8 @@ static time_t last_clock_update_micros;
 
 static hydro_level_t sensor_level;
 
+static buzzer_pattern_t** patterns;
+
 static void update_internal_clock()
 {
     esp_err_t ret = blocking_update_time();
@@ -40,6 +42,20 @@ static void update_internal_clock()
     }
 }
 
+static void init_buzzer_patterns() {
+    patterns = (buzzer_pattern_t*)calloc(4, sizeof(buzzer_pattern_t*));
+
+    patterns[HYDRO_LEVEL_OK] = NULL;
+    parse_music_str("o4l2cr2c", &patterns[HYDRO_LEVEL_LOW]);
+    parse_music_str("o5l2co4f#", &patterns[HYDRO_LEVEL_MED]);
+    parse_music_str("l4o6cf#o7co6f#c", &patterns[HYDRO_LEVEL_HIGH]);
+
+    for(int i=1; i<=HYDRO_LEVEL_HIGH; i++) {
+        patterns[i]->waveform = BUZZER_WAV_SAW;
+        patterns[i]->loop = false;
+    }
+}
+
 void app_main(void)
 {
     esp_log_level_set("*", ESP_LOG_INFO);
@@ -51,6 +67,8 @@ void app_main(void)
     // ESP_LOGI(TAG, "Updating for time: %.2d:%.2d", timeinfo.tm_hour, timeinfo.tm_min);
 
     ESP_ERROR_CHECK_WITHOUT_ABORT(buzzer_control_init());
+
+    init_buzzer_patterns();
 
     ESP_ERROR_CHECK(init_hydro_sensor());
 
@@ -68,17 +86,9 @@ void app_main(void)
         } else {
             ESP_LOGD(TAG, "sensor level: %d", sensor_level);
 
-            switch(sensor_level) {
-                case HYDRO_LEVEL_OK:
-                    break;
-                case HYDRO_LEVEL_LOW:
-                    break;
-                case HYDRO_LEVEL_MED:
-                    break;
-                case HYDRO_LEVEL_HIGH:
-                    break;
-                default:
-                    ESP_LOGE(TAG, "level not supported");
+            buzzer_pattern_t* pattern = patterns[sensor_level];
+            if(pattern != NULL) {
+                buzzer_control_play_pattern(pattern);
             }
         }
 
