@@ -6,7 +6,7 @@
 #include "esp_adc/adc_cali_scheme.h"
 #include "hydro_sensor.h"
 
-#define ADC_CHANNEL ADC_CHANNEL_7
+#define ADC_CHANNEL ADC_CHANNEL_0
 #define ADC_CONV_MODE ADC_CONV_SINGLE_UNIT_1
 #define ADC_ATTEN ADC_ATTEN_DB_11
 #define ADC_BIT_WIDTH ADC_BITWIDTH_12

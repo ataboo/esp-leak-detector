@@ -4,15 +4,19 @@
 #include "freertos/queue.h"
 #define LOCAL_LOG_LEVEL ESP_LOG_INFO
 #include "esp_log.h"
-#include "driver/dac_oneshot.h"
 #include "driver/gptimer.h"
 #include <math.h>
 #include "esp_timer.h"
+#include "driver/gpio.h"
 
 #define TIMER_ALARM_COUNT 20
 #define MAX_KEYFRAME_COUNT 32
 #define TASK_N_QUIT (1ULL << 1)
 #define TASK_N_RESET (1ULL << 2)
+
+#define BUZZER_POS_PIN GPIO_NUM_3
+
+#define OUTPUT_PINS (1ULL<<BUZZER_POS_PIN)
 
 #define ERROR_CHECK_RETURN(action) {esp_err_t ret = action; if(ret != ESP_OK) { return ret; }} 
 
@@ -28,18 +32,14 @@ static int64_t next_frame_time_us = 0;
 static uint32_t play_progress = 0;
 static uint32_t play_pos = 0;
 static uint32_t half_period_ticks = 0;
-static uint8_t last_dac_level = 127;
-static uint8_t sine_approx[255];
-static uint8_t saw_approx[255];
-static uint8_t square_approx[255];
-static uint8_t *current_waveform = NULL;
+static bool last_dac_level = 0;
+static bool square_bool[255];
 
-static dac_oneshot_handle_t dac_pos_handle;
-static dac_oneshot_handle_t dac_neg_handle;
+static bool *current_waveform = NULL;
 
 static IRAM_ATTR bool timer_isr(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_data)
 {
-    uint8_t dac_level = 127;
+    bool dac_level = 0;
     if (current_waveform != NULL && half_period_ticks > 0)
     {
         play_pos = (play_pos + 1) % (half_period_ticks * 2);
@@ -49,10 +49,7 @@ static IRAM_ATTR bool timer_isr(gptimer_handle_t timer, const gptimer_alarm_even
 
     if (dac_level != last_dac_level)
     {
-        // dac_level = (dac_level - last_dac_level) / 2 + last_dac_level;
-
-        ESP_ERROR_CHECK(dac_oneshot_output_voltage(dac_pos_handle, dac_level));
-        // ESP_ERROR_CHECK(dac_oneshot_output_voltage(dac_neg_handle, 255 - dac_level));
+        gpio_set_level(BUZZER_POS_PIN, (int)dac_level);
         last_dac_level = dac_level;
     }
 
@@ -66,22 +63,7 @@ static void buzzer_set_frequency(uint32_t frequency)
 
 static void buzzer_start_play(buzzer_waveform_t waveform)
 {
-    switch (waveform)
-    {
-    case BUZZER_WAV_SAW:
-        current_waveform = saw_approx;
-        break;
-    case BUZZER_WAV_SIN:
-        current_waveform = sine_approx;
-        break;
-    case BUZZER_WAV_SQUARE:
-        current_waveform = square_approx;
-        break;
-    default:
-        ESP_LOGE(TAG, "Unsupported waveform!");
-        current_waveform = NULL;
-        break;
-    }
+    current_waveform = square_bool;
 }
 
 static void buzzer_stop_play()
@@ -184,13 +166,9 @@ static void buzzer_play_task(void *args)
 
 static void gen_approx_wavs()
 {
-    double half_max = 127.5;
-
     for (int i = 0; i < 255; i++)
     {
-        sine_approx[i] = (uint8_t)round(sin(2 * M_PI * (i / 255.0)) * half_max + half_max);
-        saw_approx[i] = i;
-        square_approx[i] = i > 127 ? 255 : 0;
+        square_bool[i] = i > 127 ? 0 : 1;
     }
 }
 
@@ -198,36 +176,12 @@ esp_err_t buzzer_control_init()
 {
     gen_approx_wavs();
 
-    dac_oneshot_config_t dac_pos_config = {
-        .chan_id = DAC_CHAN_0,  
+    gpio_config_t gpio_cfg = {
+        .mode = GPIO_MODE_OUTPUT,
+        .pin_bit_mask = OUTPUT_PINS,
     };
 
-    dac_oneshot_config_t dac_neg_config = {
-        .chan_id = DAC_CHAN_1,  
-    };
-
-    ERROR_CHECK_RETURN(dac_oneshot_new_channel(&dac_pos_config, &dac_pos_handle))
-    ERROR_CHECK_RETURN(dac_oneshot_new_channel(&dac_neg_config, &dac_neg_handle))
-
-    ERROR_CHECK_RETURN(dac_oneshot_output_voltage(dac_pos_handle, 127));
-    ERROR_CHECK_RETURN(dac_oneshot_output_voltage(dac_neg_handle, 127));
-
-    // ERROR_CHECK_RETURN(dac_output_enable(BUZZER_DAC_POS_CHAN));
-    // ERROR_CHECK_RETURN(dac_output_enable(BUZZER_DAC_NEG_CHAN));
-
-    // timer_config_t config = {
-    //     .divider = TIMER_DIVIDER,
-    //     .counter_dir = TIMER_COUNT_UP,
-    //     .counter_en = TIMER_PAUSE,
-    //     .alarm_en = TIMER_ALARM_EN,
-    //     .auto_reload = TIMER_AUTORELOAD_EN,
-    // };
-    // timer_init(TIMER_GROUP_0, TIMER_0, &config);
-    // timer_set_counter_value(TIMER_GROUP_0, TIMER_0, 0);
-    // timer_set_alarm_value(TIMER_GROUP_0, TIMER_0, TIMER_ALARM_COUNT);
-    // timer_enable_intr(TIMER_GROUP_0, TIMER_0);
-    // timer_isr_callback_add(TIMER_GROUP_0, TIMER_0, timer_isr, NULL, 0);
-    // timer_start(TIMER_GROUP_0, TIMER_0);
+    ERROR_CHECK_RETURN(gpio_config(&gpio_cfg));
 
     gptimer_config_t config = {
         .clk_src = GPTIMER_CLK_SRC_DEFAULT,

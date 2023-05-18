@@ -1,3 +1,3 @@
 idf_component_register(SRCS "main.c"
                     INCLUDE_DIRS "."
-                    REQUIRES wifi_time hydro_sensor esp_timer buzzer_control)
+                    REQUIRES hydro_sensor buzzer_control c3_led_blink)
